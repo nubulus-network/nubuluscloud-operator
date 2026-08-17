@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- tunnel_v1alpha1_tunnel.yaml
+- tunnel_v1alpha1_tunnelroute.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,106 @@
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "nubuluscloud-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nubuluscloud-operator.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Values.rbac.create }}
+---
+# Kept in step with the +kubebuilder:rbac markers in the controllers. When those
+# change, `make manifests` regenerates config/rbac/role.yaml and this has to
+# follow, or the operator starts failing on a verb nobody removed on purpose.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nubuluscloud-operator.fullname" . }}
+  labels:
+    {{- include "nubuluscloud-operator.labels" . | nindent 4 }}
+rules:
+  # A Tunnel names its credential Secret in its own namespace, so which
+  # namespaces hold one is not knowable in advance. The operator also owns the
+  # Secret each tunnel's credential is written to, which is where create and
+  # update come from.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, update, patch]
+  # Read-only, and only to turn a Service into an address and to refuse a port
+  # it does not publish.
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  # The agent Deployment for each tunnel.
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [tunnel.nubulusnetwork.es]
+    resources: [tunnels, tunnelroutes]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [tunnel.nubulusnetwork.es]
+    resources: [tunnels/status, tunnelroutes/status]
+    verbs: [get, update, patch]
+  # Finalizers are what stop a deleted object from leaving a tunnel holding an
+  # address, or a route answering on a public hostname.
+  - apiGroups: [tunnel.nubulusnetwork.es]
+    resources: [tunnels/finalizers, tunnelroutes/finalizers]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nubuluscloud-operator.fullname" . }}
+  labels:
+    {{- include "nubuluscloud-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nubuluscloud-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nubuluscloud-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.leaderElection.enabled }}
+---
+# Namespaced on purpose: the lease lives beside the operator, so this grants
+# nothing outside its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "nubuluscloud-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nubuluscloud-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "nubuluscloud-operator.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nubuluscloud-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "nubuluscloud-operator.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nubuluscloud-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

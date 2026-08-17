@@ -1,0 +1,24 @@
+apiVersion: v2
+name: nubuluscloud-operator
+description: Declare Nubulus Cloud tunnels and routes as Kubernetes objects, and run the tunnel agent alongside them.
+type: application
+
+# version is the chart's, appVersion the operator's. They move together: the
+# CRDs shipped here are generated from the operator's types, so a chart from one
+# release and an operator from another can disagree about the schema.
+version: 0.1.0
+appVersion: "0.1.0"
+
+# The custom resources use CEL validation rules, which are on by default from
+# 1.25. On anything older the rules are dropped silently and mistakes that
+# should be refused at apply time become conditions nobody reads.
+kubeVersion: ">=1.25.0-0"
+
+home: https://github.com/Nubulus-Network/nubuluscloud-operator
+sources:
+  - https://github.com/Nubulus-Network/nubuluscloud-operator
+keywords:
+  - tunnel
+  - ingress
+  - wireguard
+  - nubulus

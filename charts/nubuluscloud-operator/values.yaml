@@ -1,0 +1,86 @@
+# The operator image.
+image:
+  repository: ghcr.io/nubulus-network/nubuluscloud-operator
+  # tag defaults to the chart's appVersion, which is what keeps the operator and
+  # the CRDs shipped beside it in step. Override it and you own that pairing.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+agent:
+  # REQUIRED. The tunnel agent image the operator deploys for every Tunnel.
+  #
+  # There is no default, and that is deliberate: a wrong one here is not an
+  # error you would see, it is an unexpected image pulled into your cluster and
+  # given a credential. The install fails if it is not set.
+  image: ""
+
+# The DNS suffix of this cluster. It turns a Service into the name the agent
+# resolves, so a cluster installed with a different one MUST set it: getting it
+# wrong publishes routes pointing at names that do not exist, and the failure
+# shows up as a 502 on a public hostname rather than as anything in Kubernetes.
+clusterDomain: cluster.local
+
+# debug, info, warn or error.
+logLevel: info
+
+# Leader election lets a second replica sit idle and take over, rather than both
+# reconciling the same objects and racing each other against the API.
+leaderElection:
+  enabled: true
+
+# More than one replica only makes sense with leader election on: the extras do
+# nothing until the holder goes away.
+replicaCount: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  # The ClusterRole this chart installs includes get, list and watch on Secrets
+  # cluster-wide. That is not a convenience: a Tunnel names its credential
+  # Secret in its own namespace, so the operator cannot know in advance which
+  # namespaces it will be asked to read.
+  #
+  # If that is too broad for your cluster, turn this off and bind the operator
+  # yourself with Roles in the namespaces that hold Tunnels.
+  create: true
+
+metrics:
+  # Off by default: an open metrics port is a decision, not a default.
+  enabled: false
+  port: 8080
+  service:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Extra arguments appended to the manager, for anything this chart does not
+# model yet.
+extraArgs: []

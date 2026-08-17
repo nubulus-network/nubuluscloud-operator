@@ -1,0 +1,73 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tunnel.nubulusnetwork.es
+  resources:
+  - tunnelroutes
+  - tunnels
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tunnel.nubulusnetwork.es
+  resources:
+  - tunnelroutes/finalizers
+  - tunnels/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - tunnel.nubulusnetwork.es
+  resources:
+  - tunnelroutes/status
+  - tunnels/status
+  verbs:
+  - get
+  - patch
+  - update

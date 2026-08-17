@@ -1,0 +1,50 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} is installed in namespace {{ .Release.Namespace }}.
+
+Two things have to exist before a tunnel can come up, and neither is in this chart.
+
+1. A credential. Create an application token in the panel and store it in the
+   namespace where the Tunnel will live:
+
+     kubectl -n <namespace> create secret generic nubulus-api \
+       --from-literal=client_id=<client id> \
+       --from-literal=client_secret=<client secret>
+
+   It is read from the Tunnel's own namespace and nowhere else, so each
+   namespace brings its own account.
+
+2. DNS. A route only carries traffic once its hostname points at the tunnel.
+   After creating a Tunnel, read the target off it:
+
+     kubectl -n <namespace> get tunnel <name> -o jsonpath='{.status.cnameTarget}'
+
+   and publish that as a CNAME wherever the hostname's zone lives.
+
+A minimal pair of objects:
+
+    apiVersion: tunnel.nubulusnetwork.es/v1alpha1
+    kind: Tunnel
+    metadata:
+      name: produccion
+    spec:
+      credentials:
+        name: nubulus-api
+    ---
+    apiVersion: tunnel.nubulusnetwork.es/v1alpha1
+    kind: TunnelRoute
+    metadata:
+      name: web
+    spec:
+      tunnelRef: produccion
+      hostname: app.example.com
+      service:
+        name: web
+        port: 8080
+
+Then watch them settle:
+
+    kubectl -n <namespace> get tunnels,tunnelroutes
+
+BEFORE YOU UNINSTALL: delete every Tunnel and TunnelRoute first, and wait for
+them to go. They carry finalizers, and the operator is what runs them. Removing
+the operator first leaves objects that cannot be deleted and tunnels that stay
+alive on the platform with nothing in this cluster pointing at them.

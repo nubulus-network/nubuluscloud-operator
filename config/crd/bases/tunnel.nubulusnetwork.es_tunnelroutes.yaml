@@ -1,0 +1,282 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: tunnelroutes.tunnel.nubulusnetwork.es
+spec:
+  group: tunnel.nubulusnetwork.es
+  names:
+    kind: TunnelRoute
+    listKind: TunnelRouteList
+    plural: tunnelroutes
+    shortNames:
+    - tunroute
+    singular: tunnelroute
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.hostname
+      name: Hostname
+      type: string
+    - jsonPath: .spec.pathPrefix
+      name: Path
+      type: string
+    - jsonPath: .status.upstreamHost
+      name: Upstream
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TunnelRoute publishes one workload of this cluster on a public hostname,
+          through a Tunnel.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec is the desired state.
+            properties:
+              enabled:
+                default: true
+                description: |-
+                  enabled is whether the route carries traffic. A disabled route keeps its
+                  hostname claimed, which is the reason to disable one rather than delete
+                  it.
+
+                  A POINTER for the same reason as priority, and here it is worse: false is
+                  a bool's zero value, so `enabled: false` would vanish on the way in and
+                  come back defaulted to true. The route would carry traffic while the
+                  object said it did not.
+                type: boolean
+              hostname:
+                description: |-
+                  hostname is the public name traffic arrives on. It must be pointed at the
+                  tunnel's cnameTarget in DNS, which is a step outside this cluster.
+
+                  A hostname may only be routed by one account platform-wide, so a
+                  conflict here is with somebody else and cannot be resolved from here.
+                pattern: ^([a-zA-Z0-9_]([-a-zA-Z0-9_]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$
+                type: string
+              pathPrefix:
+                description: |-
+                  pathPrefix is the prefix a path route matches. Required for type: path,
+                  and it cannot be "/", which is what a host route is.
+                pattern: ^/.*$
+                type: string
+              priority:
+                default: 100
+                description: |-
+                  priority orders the routes of a tunnel when more than one could match.
+                  Lower wins.
+
+                  A POINTER, and it has to stay one. With a plain int32 the `omitempty` in
+                  the tag drops a priority of 0 from the serialised object, the API server
+                  sees an absent field, and the default of 100 is applied: the one value a
+                  user might reasonably want most is the one they could not express.
+                format: int32
+                minimum: 0
+                type: integer
+              scheme:
+                default: http
+                description: |-
+                  scheme the agent speaks to the upstream. The public side is always HTTPS
+                  with a certificate the platform manages; this is only the last hop,
+                  inside the cluster.
+                enum:
+                - http
+                - https
+                type: string
+              service:
+                description: service is the workload in this namespace traffic is
+                  sent to.
+                properties:
+                  name:
+                    description: name of the Service.
+                    minLength: 1
+                    type: string
+                  port:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      port of the Service: either its number or the name it was declared with.
+                      A name is resolved against the Service, so it keeps working when the
+                      number behind it changes.
+                    x-kubernetes-int-or-string: true
+                required:
+                - name
+                - port
+                type: object
+              stripPrefix:
+                default: false
+                description: |-
+                  stripPrefix removes pathPrefix before the request reaches the upstream,
+                  for a service that does not know it is mounted under one.
+                type: boolean
+              tunnelRef:
+                description: |-
+                  tunnelRef is the Tunnel this route goes through, by name, in this
+                  namespace. Same-namespace for the same reason as the Service: the tunnel
+                  belongs to an account, and reaching one from another namespace would be
+                  borrowing that account.
+                minLength: 1
+                type: string
+              type:
+                default: host
+                description: |-
+                  type is how the route matches. A host route takes everything for the
+                  hostname that no path route claimed; a path route takes one prefix.
+                enum:
+                - host
+                - path
+                type: string
+              upstream:
+                description: upstream is an address to send traffic to instead of
+                  a Service.
+                properties:
+                  host:
+                    description: host is a hostname or an address, resolved by the
+                      agent pod.
+                    minLength: 1
+                    type: string
+                  port:
+                    description: port on that host.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+            required:
+            - hostname
+            - tunnelRef
+            type: object
+            x-kubernetes-validations:
+            - message: set exactly one of service or upstream
+              rule: has(self.service) != has(self.upstream)
+            - message: a path route needs a pathPrefix other than '/'
+              rule: self.type != 'path' || (has(self.pathPrefix) && self.pathPrefix
+                != '/')
+            - message: 'a host route cannot have a pathPrefix; use type: path'
+              rule: self.type != 'host' || !has(self.pathPrefix) || self.pathPrefix
+                == '/'
+          status:
+            description: status is the observed state.
+            properties:
+              conditions:
+                description: conditions of the route.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  observedGeneration is the generation of the spec this status was
+                  computed from.
+                format: int64
+                type: integer
+              routeID:
+                description: routeID is the identifier the platform gave this route.
+                type: string
+              tunnelID:
+                description: tunnelID is the tunnel it was created in, resolved from
+                  tunnelRef.
+                type: string
+              upstreamHost:
+                description: |-
+                  upstreamHost is the address this route was published with: the in-cluster
+                  name a Service resolved to, or the host given verbatim. It is here
+                  because it is the one thing the spec does not say outright and the first
+                  thing to check when a route answers the wrong thing.
+                type: string
+              upstreamPort:
+                description: upstreamPort likewise, after a named port was resolved.
+                format: int32
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
