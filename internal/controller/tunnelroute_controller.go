@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,7 +59,7 @@ const tunnelNotReadyRetry = 15 * time.Second
 type TunnelRouteReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	API APIClientFactory
 
@@ -132,7 +132,7 @@ func (r *TunnelRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		r.setSynced(&route, metav1.ConditionFalse, "UpstreamUnresolved",
 			"Not published: the upstream could not be resolved.")
 		r.setReady(&route)
-		r.Recorder.Eventf(&route, corev1.EventTypeWarning, "UpstreamUnresolved", "%v", err)
+		r.Recorder.Eventf(&route, nil, corev1.EventTypeWarning, "UpstreamUnresolved", "Resolving", "%v", err)
 		return r.finish(ctx, &route, ctrl.Result{RequeueAfter: permanentRetryPeriod}, nil)
 	}
 	r.setResolved(&route, metav1.ConditionTrue, "Resolved",
@@ -150,7 +150,7 @@ func (r *TunnelRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		failure := nubulus.Classify(err)
 		r.setSynced(&route, metav1.ConditionFalse, failure.Reason, failure.Message)
 		r.setReady(&route)
-		r.Recorder.Eventf(&route, corev1.EventTypeWarning, failure.Reason, "%s", failure.Message)
+		r.Recorder.Eventf(&route, nil, corev1.EventTypeWarning, failure.Reason, "Publishing", "%s", failure.Message)
 		if failure.Permanent {
 			return r.finish(ctx, &route, ctrl.Result{RequeueAfter: permanentRetryPeriod}, nil)
 		}
@@ -207,7 +207,7 @@ func servicePort(svc *corev1.Service, want intstr.IntOrString) (int32, error) {
 				return p.Port, nil
 			}
 		}
-		return 0, fmt.Errorf("Service %q declares no port named %q", svc.Name, want.StrVal)
+		return 0, fmt.Errorf("the Service %q declares no port named %q", svc.Name, want.StrVal)
 	}
 
 	n := int32(want.IntValue())
@@ -219,7 +219,7 @@ func servicePort(svc *corev1.Service, want intstr.IntOrString) (int32, error) {
 	// Refused rather than passed through. A port the Service does not publish
 	// cannot work, and finding that out here costs a condition; finding it out
 	// later costs a public hostname answering nothing.
-	return 0, fmt.Errorf("Service %q does not publish port %d", svc.Name, n)
+	return 0, fmt.Errorf("the Service %q does not publish port %d", svc.Name, n)
 }
 
 // ensureRoute makes the platform hold exactly the route this object describes.
@@ -251,7 +251,7 @@ func (r *TunnelRouteReconciler) ensureRoute(
 		if err := api.Tunnel.DeleteRoute(ctx, tunnelID, existing.ID); err != nil && !nubulus.IsNotFound(err) {
 			return nil, fmt.Errorf("deleting the route being replaced: %w", err)
 		}
-		r.Recorder.Eventf(route, corev1.EventTypeNormal, "RouteReplaced",
+		r.Recorder.Eventf(route, nil, corev1.EventTypeNormal, "RouteReplaced", "Replacing",
 			"Recreated the route because its hostname, type or path prefix changed")
 		existing = nil
 	}
@@ -370,7 +370,7 @@ func routeDrift(
 
 func routeType(route *tunnelv1alpha1.TunnelRoute) string {
 	if route.Spec.Type == "" {
-		return "host"
+		return tunnelv1alpha1.RouteTypeHost
 	}
 	return route.Spec.Type
 }
@@ -405,7 +405,7 @@ func enabled(route *tunnelv1alpha1.TunnelRoute) bool {
 
 func upstreamScheme(route *tunnelv1alpha1.TunnelRoute) string {
 	if route.Spec.Scheme == "" {
-		return "http"
+		return tunnelv1alpha1.SchemeHTTP
 	}
 	return route.Spec.Scheme
 }
@@ -461,7 +461,7 @@ func (r *TunnelRouteReconciler) deleteRemoteRoute(
 
 	api, err := r.API.ClientFor(ctx, r.Client, &tunnel)
 	if err != nil {
-		r.Recorder.Eventf(route, corev1.EventTypeWarning, "DeleteBlocked",
+		r.Recorder.Eventf(route, nil, corev1.EventTypeWarning, "DeleteBlocked", "Deleting",
 			"Cannot delete the route because the tunnel's credential could not be read: %v", err)
 		return err
 	}
@@ -535,7 +535,8 @@ func (r *TunnelRouteReconciler) setReady(route *tunnelv1alpha1.TunnelRoute) {
 	resolved := meta.IsStatusConditionTrue(route.Status.Conditions, tunnelv1alpha1.TunnelRouteConditionResolved)
 	synced := meta.IsStatusConditionTrue(route.Status.Conditions, tunnelv1alpha1.TunnelRouteConditionSynced)
 
-	status, reason, msg := metav1.ConditionFalse, "NotReady", "The route is not ready."
+	status := metav1.ConditionFalse
+	var reason, msg string
 	switch {
 	case !resolved:
 		reason, msg = "UpstreamUnresolved", "The upstream could not be resolved."

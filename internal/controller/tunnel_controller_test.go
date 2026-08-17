@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -84,7 +84,7 @@ func newTunnelReconciler(api APIClientFactory) *TunnelReconciler {
 	return &TunnelReconciler{
 		Client:            k8sClient,
 		Scheme:            scheme.Scheme,
-		Recorder:          record.NewFakeRecorder(100),
+		Recorder:          events.NewFakeRecorder(100),
 		API:               api,
 		DefaultAgentImage: "agent:test",
 	}
@@ -116,11 +116,11 @@ func TestAFirstReconcileCreatesTheTunnelItsSecretAndItsAgent(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	if got.Status.TunnelID == "" {
 		t.Fatal("the status carries no tunnel id")
 	}
@@ -135,7 +135,7 @@ func TestAFirstReconcileCreatesTheTunnelItsSecretAndItsAgent(t *testing.T) {
 
 	var secret corev1.Secret
 	if err := k8sClient.Get(ctx, types.NamespacedName{
-		Namespace: ns, Name: tokenSecretName("produccion"),
+		Namespace: ns, Name: tokenSecretName(tunnelName),
 	}, &secret); err != nil {
 		t.Fatalf("reading the credential Secret: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAFirstReconcileCreatesTheTunnelItsSecretAndItsAgent(t *testing.T) {
 
 	var deployment appsv1.Deployment
 	if err := k8sClient.Get(ctx, types.NamespacedName{
-		Namespace: ns, Name: agentDeploymentName("produccion"),
+		Namespace: ns, Name: agentDeploymentName(tunnelName),
 	}, &deployment); err != nil {
 		t.Fatalf("reading the agent Deployment: %v", err)
 	}
@@ -161,13 +161,13 @@ func TestALostCreateIsAdoptedRatherThanRepeated(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
 	// Wipe the status: this is exactly what a crash between the answer and the
 	// status write leaves behind.
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	firstID := got.Status.TunnelID
 	got.Status.TunnelID = ""
 	if err := k8sClient.Status().Update(ctx, got); err != nil {
@@ -182,7 +182,7 @@ func TestALostCreateIsAdoptedRatherThanRepeated(t *testing.T) {
 	if api.creates != 2 {
 		t.Errorf("creates = %d, want 2: the test did not exercise the retry", api.creates)
 	}
-	if again := getTunnel(t, ns, "produccion").Status.TunnelID; again != firstID {
+	if again := getTunnel(t, ns, tunnelName).Status.TunnelID; again != firstID {
 		t.Errorf("tunnelID = %q after adoption, want the original %q", again, firstID)
 	}
 }
@@ -196,17 +196,17 @@ func TestAdoptionDoesNotRotateACredentialThatIsStillStored(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
 	var before corev1.Secret
-	key := types.NamespacedName{Namespace: ns, Name: tokenSecretName("produccion")}
+	key := types.NamespacedName{Namespace: ns, Name: tokenSecretName(tunnelName)}
 	if err := k8sClient.Get(ctx, key, &before); err != nil {
 		t.Fatalf("reading the credential Secret: %v", err)
 	}
 
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	got.Status.TunnelID = ""
 	if err := k8sClient.Status().Update(ctx, got); err != nil {
 		t.Fatalf("clearing the status: %v", err)
@@ -234,11 +234,11 @@ func TestAMissingCredentialIsRotatedBack(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	key := types.NamespacedName{Namespace: ns, Name: tokenSecretName("produccion")}
+	key := types.NamespacedName{Namespace: ns, Name: tokenSecretName(tunnelName)}
 	var secret corev1.Secret
 	if err := k8sClient.Get(ctx, key, &secret); err != nil {
 		t.Fatalf("reading the credential Secret: %v", err)
@@ -268,11 +268,11 @@ func TestTheFinalizerIsOnBeforeAnythingExistsRemotely(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	found := false
 	for _, f := range got.Finalizers {
 		if f == tunnelv1alpha1.TunnelFinalizer {
@@ -290,11 +290,11 @@ func TestDeletingTheObjectDeletesTheTunnel(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	if err := k8sClient.Delete(ctx, getTunnel(t, ns, "produccion")); err != nil {
+	if err := k8sClient.Delete(ctx, getTunnel(t, ns, tunnelName)); err != nil {
 		t.Fatalf("deleting the Tunnel: %v", err)
 	}
 	reconcileTunnel(t, r, tunnel)
@@ -303,7 +303,7 @@ func TestDeletingTheObjectDeletesTheTunnel(t *testing.T) {
 		t.Errorf("the platform still holds %d tunnels", n)
 	}
 	var gone tunnelv1alpha1.Tunnel
-	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "produccion"}, &gone)
+	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: tunnelName}, &gone)
 	if !apierrors.IsNotFound(err) {
 		t.Errorf("the object is still there: the finalizer was not removed (%v)", err)
 	}
@@ -318,17 +318,17 @@ func TestDeletingCleansUpATunnelTheStatusNeverRecorded(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	got.Status.TunnelID = ""
 	if err := k8sClient.Status().Update(ctx, got); err != nil {
 		t.Fatalf("clearing the status: %v", err)
 	}
 
-	if err := k8sClient.Delete(ctx, getTunnel(t, ns, "produccion")); err != nil {
+	if err := k8sClient.Delete(ctx, getTunnel(t, ns, tunnelName)); err != nil {
 		t.Fatalf("deleting the Tunnel: %v", err)
 	}
 	reconcileTunnel(t, r, tunnel)
@@ -347,13 +347,13 @@ func TestATunnelDeletedOnThePlatformIsRecreatedAndTheAgentIsRolled(t *testing.T)
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(api.clientFactory())
 	reconcileTunnel(t, r, tunnel)
 
-	first := getTunnel(t, ns, "produccion").Status.TunnelID
+	first := getTunnel(t, ns, tunnelName).Status.TunnelID
 	var deployment appsv1.Deployment
-	deployKey := types.NamespacedName{Namespace: ns, Name: agentDeploymentName("produccion")}
+	deployKey := types.NamespacedName{Namespace: ns, Name: agentDeploymentName(tunnelName)}
 	if err := k8sClient.Get(ctx, deployKey, &deployment); err != nil {
 		t.Fatalf("reading the agent Deployment: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestATunnelDeletedOnThePlatformIsRecreatedAndTheAgentIsRolled(t *testing.T)
 	api.deleteTunnelBehindOurBack(first)
 	reconcileTunnel(t, r, tunnel)
 
-	second := getTunnel(t, ns, "produccion").Status.TunnelID
+	second := getTunnel(t, ns, tunnelName).Status.TunnelID
 	if second == "" || second == first {
 		t.Fatalf("tunnelID = %q after the platform lost it, want a new one", second)
 	}
@@ -380,7 +380,7 @@ func TestAnUnreadableCredentialIsReportedAndNotRetriedHard(t *testing.T) {
 	ns := newNamespace(t)
 	cred := newCredentialSecret(t, ns)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	r := newTunnelReconciler(failingFactory{err: errors.New("Secret has no client_id")})
 
 	res := reconcileTunnel(t, r, tunnel)
@@ -388,7 +388,7 @@ func TestAnUnreadableCredentialIsReportedAndNotRetriedHard(t *testing.T) {
 		t.Error("a permanent failure must still be requeued slowly, not dropped")
 	}
 
-	got := getTunnel(t, ns, "produccion")
+	got := getTunnel(t, ns, tunnelName)
 	var synced *metav1.Condition
 	for i := range got.Status.Conditions {
 		if got.Status.Conditions[i].Type == tunnelv1alpha1.TunnelConditionSynced {
@@ -411,17 +411,17 @@ func TestATunnelThatNeverReachedThePlatformCanBeDeleted(t *testing.T) {
 	ctx := context.Background()
 	ns := newNamespace(t)
 
-	tunnel := newTunnel(t, ns, "produccion", "no-existe")
+	tunnel := newTunnel(t, ns, tunnelName, "no-existe")
 	r := newTunnelReconciler(failingFactory{err: errors.New("no such Secret")})
 	reconcileTunnel(t, r, tunnel)
 
-	if err := k8sClient.Delete(ctx, getTunnel(t, ns, "produccion")); err != nil {
+	if err := k8sClient.Delete(ctx, getTunnel(t, ns, tunnelName)); err != nil {
 		t.Fatalf("deleting the Tunnel: %v", err)
 	}
 	reconcileTunnel(t, r, tunnel)
 
 	var gone tunnelv1alpha1.Tunnel
-	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: "produccion"}, &gone)
+	err := k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: tunnelName}, &gone)
 	if !apierrors.IsNotFound(err) {
 		t.Errorf("the object is stuck in Terminating over a credential it never used: %v", err)
 	}
@@ -436,10 +436,10 @@ func TestATunnelThatMayExistIsHeldWhenItsCredentialBreaks(t *testing.T) {
 	cred := newCredentialSecret(t, ns)
 	api := newFakeAPI(t)
 
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	reconcileTunnel(t, newTunnelReconciler(api.clientFactory()), tunnel)
 
-	if err := k8sClient.Delete(ctx, getTunnel(t, ns, "produccion")); err != nil {
+	if err := k8sClient.Delete(ctx, getTunnel(t, ns, tunnelName)); err != nil {
 		t.Fatalf("deleting the Tunnel: %v", err)
 	}
 	broken := newTunnelReconciler(failingFactory{err: errors.New("credential gone")})
@@ -447,7 +447,7 @@ func TestATunnelThatMayExistIsHeldWhenItsCredentialBreaks(t *testing.T) {
 
 	var held tunnelv1alpha1.Tunnel
 	if err := k8sClient.Get(ctx, types.NamespacedName{
-		Namespace: ns, Name: "produccion",
+		Namespace: ns, Name: tunnelName,
 	}, &held); err != nil {
 		t.Fatalf("the object was let go while its tunnel is still on the platform: %v", err)
 	}

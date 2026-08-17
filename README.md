@@ -10,7 +10,7 @@ the tunnel agent beside your workloads, and points the routes at your Services.
 apiVersion: tunnel.nubulusnetwork.es/v1alpha1
 kind: Tunnel
 metadata:
-  name: produccion
+  name: production
 spec:
   credentials:
     name: nubulus-api
@@ -20,7 +20,7 @@ kind: TunnelRoute
 metadata:
   name: web
 spec:
-  tunnelRef: produccion
+  tunnelRef: production
   hostname: app.example.com
   service:
     name: web

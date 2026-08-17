@@ -41,7 +41,7 @@ account, so one team cannot route traffic through another team's account.
 **DNS.** A route carries traffic only once its hostname points at the tunnel:
 
 ```sh
-kubectl -n apps get tunnel produccion -o jsonpath='{.status.cnameTarget}'
+kubectl -n apps get tunnel production -o jsonpath='{.status.cnameTarget}'
 ```
 
 Publish that as a CNAME wherever the hostname's zone lives. The operator cannot
@@ -53,7 +53,7 @@ Then:
 apiVersion: tunnel.nubulusnetwork.es/v1alpha1
 kind: Tunnel
 metadata:
-  name: produccion
+  name: production
   namespace: apps
 spec:
   credentials:
@@ -65,7 +65,7 @@ metadata:
   name: web
   namespace: apps
 spec:
-  tunnelRef: produccion
+  tunnelRef: production
   hostname: app.example.com
   service:
     name: web

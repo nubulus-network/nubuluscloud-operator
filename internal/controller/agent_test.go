@@ -28,7 +28,7 @@ import (
 
 func testTunnel() *tunnelv1alpha1.Tunnel {
 	return &tunnelv1alpha1.Tunnel{
-		ObjectMeta: metav1.ObjectMeta{Name: "produccion", Namespace: "apps"},
+		ObjectMeta: metav1.ObjectMeta{Name: tunnelName, Namespace: "apps"},
 	}
 }
 

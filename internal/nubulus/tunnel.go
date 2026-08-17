@@ -340,7 +340,7 @@ func (c *TunnelClient) ListTunnels(ctx context.Context) ([]TunnelSummary, error)
 	var all []TunnelSummary
 	offset := 0
 
-	for page := 0; page < listPageLimit; page++ {
+	for range listPageLimit {
 		var out struct {
 			Data   []TunnelSummary `json:"data"`
 			Limit  int             `json:"limit"`

@@ -123,10 +123,10 @@ func configFor(
 	// Named separately rather than as "the Secret is wrong", because the two
 	// have different fixes and the key names are configurable.
 	if clientID == "" {
-		return nubulus.Config{}, "", fmt.Errorf("Secret %s has no %q", nn, idKey)
+		return nubulus.Config{}, "", fmt.Errorf("the Secret %s has no %q", nn, idKey)
 	}
 	if clientSecret == "" {
-		return nubulus.Config{}, "", fmt.Errorf("Secret %s has no %q", nn, secretKey)
+		return nubulus.Config{}, "", fmt.Errorf("the Secret %s has no %q", nn, secretKey)
 	}
 
 	cfg := nubulus.Config{

@@ -216,7 +216,7 @@ func main() {
 	if err := (&controller.TunnelReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
-		Recorder:          mgr.GetEventRecorderFor("tunnel"),
+		Recorder:          mgr.GetEventRecorder("tunnel"),
 		API:               apiClients,
 		DefaultAgentImage: defaultAgentImage,
 	}).SetupWithManager(mgr); err != nil {
@@ -226,7 +226,7 @@ func main() {
 	if err := (&controller.TunnelRouteReconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
-		Recorder:      mgr.GetEventRecorderFor("tunnelroute"),
+		Recorder:      mgr.GetEventRecorder("tunnelroute"),
 		API:           apiClients,
 		ClusterDomain: clusterDomain,
 	}).SetupWithManager(mgr); err != nil {

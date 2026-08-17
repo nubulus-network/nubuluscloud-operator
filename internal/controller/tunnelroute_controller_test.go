@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -54,7 +54,7 @@ func newRouteReconciler(api APIClientFactory) *TunnelRouteReconciler {
 	return &TunnelRouteReconciler{
 		Client:        k8sClient,
 		Scheme:        scheme.Scheme,
-		Recorder:      record.NewFakeRecorder(100),
+		Recorder:      events.NewFakeRecorder(100),
 		API:           api,
 		ClusterDomain: "cluster.local",
 	}
@@ -85,9 +85,9 @@ func readyTunnel(t *testing.T, api *fakeAPI) (namespace string, tunnelID string)
 	t.Helper()
 	ns := newNamespace(t)
 	cred := newCredentialSecret(t, ns)
-	tunnel := newTunnel(t, ns, "produccion", cred)
+	tunnel := newTunnel(t, ns, tunnelName, cred)
 	reconcileTunnel(t, newTunnelReconciler(api.clientFactory()), tunnel)
-	return ns, getTunnel(t, ns, "produccion").Status.TunnelID
+	return ns, getTunnel(t, ns, tunnelName).Status.TunnelID
 }
 
 func newRoute(t *testing.T, ns, name string, spec tunnelv1alpha1.TunnelRouteSpec) *tunnelv1alpha1.TunnelRoute {
@@ -104,11 +104,11 @@ func newRoute(t *testing.T, ns, name string, spec tunnelv1alpha1.TunnelRouteSpec
 
 func hostRouteSpec(service string, port intstr.IntOrString) tunnelv1alpha1.TunnelRouteSpec {
 	return tunnelv1alpha1.TunnelRouteSpec{
-		TunnelRef: "produccion",
-		Hostname:  "app.example.com",
-		Type:      "host",
+		TunnelRef: tunnelName,
+		Hostname:  hostname,
+		Type:      tunnelv1alpha1.RouteTypeHost,
 		Service:   &tunnelv1alpha1.ServiceTarget{Name: service, Port: port},
-		Scheme:    "http",
+		Scheme:    tunnelv1alpha1.SchemeHTTP,
 		Priority:  ptr.To[int32](100),
 		Enabled:   ptr.To(true),
 	}
@@ -120,12 +120,12 @@ func hostRouteSpec(service string, port intstr.IntOrString) tunnelv1alpha1.Tunne
 func TestARouteIsPublishedWithTheClusterNameOfItsService(t *testing.T) {
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	reconcileRoute(t, newRouteReconciler(api.clientFactory()), route)
 
-	got := getRoute(t, ns, "web")
+	got := getRoute(t, ns, serviceName)
 	want := "web." + ns + ".svc.cluster.local"
 	if got.Status.UpstreamHost != want {
 		t.Errorf("upstreamHost = %q, want %q", got.Status.UpstreamHost, want)
@@ -146,9 +146,9 @@ func TestARouteIsPublishedWithTheClusterNameOfItsService(t *testing.T) {
 func TestANamedPortIsResolvedAgainstTheService(t *testing.T) {
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromString("http")))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromString("http")))
 	reconcileRoute(t, newRouteReconciler(api.clientFactory()), route)
 
 	published := api.routesOf(tunnelID)
@@ -165,16 +165,16 @@ func TestAServiceInAnotherNamespaceDoesNotSatisfyARoute(t *testing.T) {
 	ns, tunnelID := readyTunnel(t, api)
 
 	elsewhere := newNamespace(t)
-	newService(t, elsewhere, "web", 8080, "http")
+	newService(t, elsewhere, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	reconcileRoute(t, newRouteReconciler(api.clientFactory()), route)
 
 	if n := api.routeCount(tunnelID); n != 0 {
 		t.Errorf("the platform holds %d routes: a Service from another namespace was published", n)
 	}
 
-	got := getRoute(t, ns, "web")
+	got := getRoute(t, ns, serviceName)
 	if meta.IsStatusConditionTrue(got.Status.Conditions, tunnelv1alpha1.TunnelRouteConditionResolved) {
 		t.Error("Resolved is True even though the Service is in a different namespace")
 	}
@@ -187,14 +187,14 @@ func TestATunnelInAnotherNamespaceDoesNotSatisfyARoute(t *testing.T) {
 	_, tunnelID := readyTunnel(t, api)
 
 	elsewhere := newNamespace(t)
-	newService(t, elsewhere, "web", 8080, "http")
-	route := newRoute(t, elsewhere, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	newService(t, elsewhere, serviceName, 8080, "http")
+	route := newRoute(t, elsewhere, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	reconcileRoute(t, newRouteReconciler(api.clientFactory()), route)
 
 	if n := api.routeCount(tunnelID); n != 0 {
 		t.Errorf("the platform holds %d routes: a tunnel from another namespace was used", n)
 	}
-	got := getRoute(t, elsewhere, "web")
+	got := getRoute(t, elsewhere, serviceName)
 	synced := meta.FindStatusCondition(got.Status.Conditions, tunnelv1alpha1.TunnelRouteConditionSynced)
 	if synced == nil || synced.Reason != "TunnelNotFound" {
 		t.Errorf("Synced reason = %v, want TunnelNotFound", synced)
@@ -207,16 +207,16 @@ func TestChangingTheHostnameReplacesTheRouteInsteadOfUpdatingIt(t *testing.T) {
 	ctx := context.Background()
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	r := newRouteReconciler(api.clientFactory())
 	reconcileRoute(t, r, route)
 
-	firstID := getRoute(t, ns, "web").Status.RouteID
+	firstID := getRoute(t, ns, serviceName).Status.RouteID
 
-	updated := getRoute(t, ns, "web")
-	updated.Spec.Hostname = "otro.example.com"
+	updated := getRoute(t, ns, serviceName)
+	updated.Spec.Hostname = otherHost
 	if err := k8sClient.Update(ctx, updated); err != nil {
 		t.Fatalf("changing the hostname: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestChangingTheHostnameReplacesTheRouteInsteadOfUpdatingIt(t *testing.T) {
 	if len(published) != 1 {
 		t.Fatalf("the platform holds %d routes, want 1: the old one was not removed", len(published))
 	}
-	if published[0].Hostname != "otro.example.com" {
+	if published[0].Hostname != otherHost {
 		t.Errorf("hostname = %q, want the new one", published[0].Hostname)
 	}
 	if published[0].ID == firstID {
@@ -239,11 +239,11 @@ func TestChangingTheHostnameReplacesTheRouteInsteadOfUpdatingIt(t *testing.T) {
 func TestARouteSpecifiedDisabledEndsUpDisabled(t *testing.T) {
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	spec := hostRouteSpec("web", intstr.FromInt32(8080))
+	spec := hostRouteSpec(serviceName, intstr.FromInt32(8080))
 	spec.Enabled = ptr.To(false)
-	route := newRoute(t, ns, "web", spec)
+	route := newRoute(t, ns, serviceName, spec)
 	reconcileRoute(t, newRouteReconciler(api.clientFactory()), route)
 
 	published := api.routesOf(tunnelID)
@@ -260,9 +260,9 @@ func TestARouteSpecifiedDisabledEndsUpDisabled(t *testing.T) {
 func TestASecondReconcileChangesNothing(t *testing.T) {
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	r := newRouteReconciler(api.clientFactory())
 	reconcileRoute(t, r, route)
 	first := api.routesOf(tunnelID)
@@ -282,13 +282,13 @@ func TestDeletingTheObjectRemovesTheRoute(t *testing.T) {
 	ctx := context.Background()
 	api := newFakeAPI(t)
 	ns, tunnelID := readyTunnel(t, api)
-	newService(t, ns, "web", 8080, "http")
+	newService(t, ns, serviceName, 8080, "http")
 
-	route := newRoute(t, ns, "web", hostRouteSpec("web", intstr.FromInt32(8080)))
+	route := newRoute(t, ns, serviceName, hostRouteSpec(serviceName, intstr.FromInt32(8080)))
 	r := newRouteReconciler(api.clientFactory())
 	reconcileRoute(t, r, route)
 
-	if err := k8sClient.Delete(ctx, getRoute(t, ns, "web")); err != nil {
+	if err := k8sClient.Delete(ctx, getRoute(t, ns, serviceName)); err != nil {
 		t.Fatalf("deleting the TunnelRoute: %v", err)
 	}
 	reconcileRoute(t, r, route)
@@ -311,15 +311,15 @@ func TestTheCRDRefusesSpecsThatCannotWork(t *testing.T) {
 		{
 			name: "neither service nor upstream",
 			spec: tunnelv1alpha1.TunnelRouteSpec{
-				TunnelRef: "produccion", Hostname: "app.example.com", Type: "host",
+				TunnelRef: tunnelName, Hostname: hostname, Type: tunnelv1alpha1.RouteTypeHost,
 			},
 			want: "exactly one",
 		},
 		{
 			name: "both service and upstream",
 			spec: tunnelv1alpha1.TunnelRouteSpec{
-				TunnelRef: "produccion", Hostname: "app.example.com", Type: "host",
-				Service:  &tunnelv1alpha1.ServiceTarget{Name: "web", Port: intstr.FromInt32(80)},
+				TunnelRef: tunnelName, Hostname: hostname, Type: tunnelv1alpha1.RouteTypeHost,
+				Service:  &tunnelv1alpha1.ServiceTarget{Name: serviceName, Port: intstr.FromInt32(80)},
 				Upstream: &tunnelv1alpha1.UpstreamTarget{Host: "elsewhere", Port: 80},
 			},
 			want: "exactly one",
@@ -327,16 +327,16 @@ func TestTheCRDRefusesSpecsThatCannotWork(t *testing.T) {
 		{
 			name: "a path route with no prefix",
 			spec: tunnelv1alpha1.TunnelRouteSpec{
-				TunnelRef: "produccion", Hostname: "app.example.com", Type: "path",
-				Service: &tunnelv1alpha1.ServiceTarget{Name: "web", Port: intstr.FromInt32(80)},
+				TunnelRef: tunnelName, Hostname: hostname, Type: tunnelv1alpha1.RouteTypePath,
+				Service: &tunnelv1alpha1.ServiceTarget{Name: serviceName, Port: intstr.FromInt32(80)},
 			},
 			want: "pathPrefix",
 		},
 		{
 			name: "a hostname that is not an FQDN",
 			spec: tunnelv1alpha1.TunnelRouteSpec{
-				TunnelRef: "produccion", Hostname: "app", Type: "host",
-				Service: &tunnelv1alpha1.ServiceTarget{Name: "web", Port: intstr.FromInt32(80)},
+				TunnelRef: tunnelName, Hostname: "app", Type: tunnelv1alpha1.RouteTypeHost,
+				Service: &tunnelv1alpha1.ServiceTarget{Name: serviceName, Port: intstr.FromInt32(80)},
 			},
 			want: "hostname",
 		},

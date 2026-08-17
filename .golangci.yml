@@ -53,6 +53,12 @@ linters:
           - dupl
           - lll
         path: internal/*
+      # A test helper takes the arguments that make the test readable, not the
+      # ones it happens to be called with today. unparam reads that as dead
+      # flexibility; in a test it is the point.
+      - linters:
+          - unparam
+        path: _test\.go
     paths:
       - third_party$
       - builtin$

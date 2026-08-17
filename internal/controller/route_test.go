@@ -31,10 +31,10 @@ import (
 func hostRoute() *tunnelv1alpha1.TunnelRoute {
 	return &tunnelv1alpha1.TunnelRoute{
 		Spec: tunnelv1alpha1.TunnelRouteSpec{
-			TunnelRef: "produccion",
-			Hostname:  "app.example.com",
-			Type:      "host",
-			Scheme:    "http",
+			TunnelRef: tunnelName,
+			Hostname:  hostname,
+			Type:      tunnelv1alpha1.RouteTypeHost,
+			Scheme:    tunnelv1alpha1.SchemeHTTP,
 			Priority:  ptr.To[int32](100),
 			Enabled:   ptr.To(true),
 		},
@@ -50,11 +50,11 @@ func TestAHostRouteWithNoPathPrefixDoesNotLookLikeDrift(t *testing.T) {
 
 	actual := &nubulus.Route{
 		Type:           "host",
-		Hostname:       "app.example.com",
+		Hostname:       hostname,
 		PathPrefix:     "/",
-		UpstreamHost:   "web.apps.svc.cluster.local",
+		UpstreamHost:   upstreamName,
 		UpstreamPort:   8080,
-		UpstreamScheme: "http",
+		UpstreamScheme: tunnelv1alpha1.SchemeHTTP,
 		Priority:       100,
 		Enabled:        true,
 	}
@@ -62,7 +62,7 @@ func TestAHostRouteWithNoPathPrefixDoesNotLookLikeDrift(t *testing.T) {
 	if identityChanged(actual, route) {
 		t.Error("identityChanged reported a change on a route that matches")
 	}
-	if _, changed := routeDrift(actual, route, "web.apps.svc.cluster.local", 8080); changed {
+	if _, changed := routeDrift(actual, route, upstreamName, 8080); changed {
 		t.Error("routeDrift reported a change on a route that matches")
 	}
 }
@@ -75,13 +75,13 @@ func TestARouteAskedToBeDisabledDriftsUntilItIs(t *testing.T) {
 	route.Spec.Enabled = ptr.To(false)
 
 	justCreated := &nubulus.Route{
-		Type: "host", Hostname: "app.example.com", PathPrefix: "/",
-		UpstreamHost: "web.apps.svc.cluster.local", UpstreamPort: 8080,
-		UpstreamScheme: "http", Priority: 100,
+		Type: tunnelv1alpha1.RouteTypeHost, Hostname: hostname, PathPrefix: "/",
+		UpstreamHost: upstreamName, UpstreamPort: 8080,
+		UpstreamScheme: tunnelv1alpha1.SchemeHTTP, Priority: 100,
 		Enabled: true, // what a create always returns
 	}
 
-	update, changed := routeDrift(justCreated, route, "web.apps.svc.cluster.local", 8080)
+	update, changed := routeDrift(justCreated, route, upstreamName, 8080)
 	if !changed {
 		t.Fatal("a route created enabled but specified disabled must drift")
 	}
@@ -98,14 +98,14 @@ func TestAPriorityOfZeroSurvivesTheCreateDefaulting(t *testing.T) {
 	route.Spec.Priority = ptr.To[int32](0)
 
 	justCreated := &nubulus.Route{
-		Type: "host", Hostname: "app.example.com", PathPrefix: "/",
-		UpstreamHost: "web.apps.svc.cluster.local", UpstreamPort: 8080,
-		UpstreamScheme: "http",
+		Type: tunnelv1alpha1.RouteTypeHost, Hostname: hostname, PathPrefix: "/",
+		UpstreamHost: upstreamName, UpstreamPort: 8080,
+		UpstreamScheme: tunnelv1alpha1.SchemeHTTP,
 		Priority:       100, // the create turned 0 into the default
 		Enabled:        true,
 	}
 
-	update, changed := routeDrift(justCreated, route, "web.apps.svc.cluster.local", 8080)
+	update, changed := routeDrift(justCreated, route, upstreamName, 8080)
 	if !changed {
 		t.Fatal("a priority of 0 defaulted to 100 by the create must drift")
 	}
@@ -122,9 +122,9 @@ func TestTheFieldsTheAPICannotUpdateAreReportedAsAnIdentityChange(t *testing.T) 
 		name  string
 		apply func(*tunnelv1alpha1.TunnelRoute)
 	}{
-		{"hostname", func(r *tunnelv1alpha1.TunnelRoute) { r.Spec.Hostname = "otro.example.com" }},
+		{"hostname", func(r *tunnelv1alpha1.TunnelRoute) { r.Spec.Hostname = otherHost }},
 		{"type and prefix", func(r *tunnelv1alpha1.TunnelRoute) {
-			r.Spec.Type = "path"
+			r.Spec.Type = tunnelv1alpha1.RouteTypePath
 			r.Spec.PathPrefix = "/api"
 		}},
 	} {
@@ -133,7 +133,7 @@ func TestTheFieldsTheAPICannotUpdateAreReportedAsAnIdentityChange(t *testing.T) 
 			tc.apply(route)
 
 			actual := &nubulus.Route{
-				Type: "host", Hostname: "app.example.com", PathPrefix: "/",
+				Type: tunnelv1alpha1.RouteTypeHost, Hostname: hostname, PathPrefix: "/",
 			}
 			if !identityChanged(actual, route) {
 				t.Error("a change to a field the API cannot update must force a replacement")
@@ -144,7 +144,7 @@ func TestTheFieldsTheAPICannotUpdateAreReportedAsAnIdentityChange(t *testing.T) 
 
 func TestServicePortResolvesANameAgainstTheService(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "web"},
+		ObjectMeta: metav1.ObjectMeta{Name: serviceName},
 		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
 			{Name: "metrics", Port: 9090},
 			{Name: "http", Port: 8080},
@@ -165,7 +165,7 @@ func TestServicePortResolvesANameAgainstTheService(t *testing.T) {
 // answers nothing, and looks like a platform fault.
 func TestServicePortRefusesAPortTheServiceDoesNotPublish(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "web"},
+		ObjectMeta: metav1.ObjectMeta{Name: serviceName},
 		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 8080}}},
 	}
 

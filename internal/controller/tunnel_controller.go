@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -65,7 +65,7 @@ const (
 type TunnelReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	// API builds platform clients from the credential a Tunnel names.
 	API APIClientFactory
@@ -270,7 +270,7 @@ func (r *TunnelReconciler) ensureCredentialSecret(
 			return nil, fmt.Errorf("rotating the credential: %w", err)
 		}
 		token = rotated.TunnelToken
-		r.Recorder.Eventf(tunnel, corev1.EventTypeNormal, "CredentialRotated",
+		r.Recorder.Eventf(tunnel, nil, corev1.EventTypeNormal, "CredentialRotated", "Rotating",
 			"Issued a new tunnel credential because none was stored")
 	}
 
@@ -356,7 +356,7 @@ func (r *TunnelReconciler) reconcileDelete(
 		// the platform. Better to hold the object in Terminating, where it is
 		// visible, than to lose the only pointer to what needs cleaning up.
 		log.Error(err, "cannot delete the tunnel: its credential is unreadable")
-		r.Recorder.Eventf(tunnel, corev1.EventTypeWarning, "DeleteBlocked",
+		r.Recorder.Eventf(tunnel, nil, corev1.EventTypeWarning, "DeleteBlocked", "Deleting",
 			"Cannot delete the tunnel because its credential could not be read: %v", err)
 		return ctrl.Result{RequeueAfter: permanentRetryPeriod}, nil
 	}
@@ -398,7 +398,8 @@ func (r *TunnelReconciler) fail(
 	failure := nubulus.Classify(err)
 	r.setSynced(tunnel, metav1.ConditionFalse, failure.Reason, failure.Message)
 	r.setReady(tunnel, "")
-	r.Recorder.Eventf(tunnel, corev1.EventTypeWarning, failure.Reason, "%s: %s", action, failure.Message)
+	r.Recorder.Eventf(tunnel, nil, corev1.EventTypeWarning, failure.Reason, "Reconciling",
+		"%s: %s", action, failure.Message)
 
 	if failure.Permanent {
 		// Returning no error is what keeps this out of the exponential backoff
@@ -468,7 +469,8 @@ func (r *TunnelReconciler) setReady(t *tunnelv1alpha1.Tunnel, onlineStatus strin
 	synced := meta.IsStatusConditionTrue(t.Status.Conditions, tunnelv1alpha1.TunnelConditionSynced)
 	agent := meta.IsStatusConditionTrue(t.Status.Conditions, tunnelv1alpha1.TunnelConditionAgentAvailable)
 
-	status, reason, msg := metav1.ConditionFalse, "NotReady", "The tunnel is not ready."
+	status := metav1.ConditionFalse
+	var reason, msg string
 	switch {
 	case !synced:
 		reason, msg = "NotSynced", "The tunnel is not in sync with the platform."

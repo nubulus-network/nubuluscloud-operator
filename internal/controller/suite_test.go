@@ -40,6 +40,17 @@ import (
 // That is enough for everything worth testing in a reconciler, because what a
 // reconciler does is read and write API objects. It is also why no container
 // runtime is needed to run any of this.
+// Fixture values shared across the tests. They are constants because the same
+// name appearing in three files as three literals is how a rename ends up half
+// done.
+const (
+	tunnelName   = "production"
+	serviceName  = "web"
+	hostname     = "app.example.com"
+	otherHost    = "other.example.com"
+	upstreamName = "web.apps.svc.cluster.local"
+)
+
 var (
 	testEnv   *envtest.Environment
 	restCfg   *rest.Config

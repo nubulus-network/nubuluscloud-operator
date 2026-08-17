@@ -295,7 +295,7 @@ func (f *fakeAPI) createRoute(w http.ResponseWriter, r *http.Request, tunnelID s
 		route.PathPrefix = "/"
 	}
 	if route.UpstreamScheme == "" {
-		route.UpstreamScheme = "http"
+		route.UpstreamScheme = tunnelv1alpha1.SchemeHTTP
 	}
 	// A priority of 0 is read as unset, because it arrives as a value and not
 	// as a pointer. The update can set 0; the create cannot.

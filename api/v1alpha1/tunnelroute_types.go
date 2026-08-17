@@ -38,6 +38,21 @@ const (
 	TunnelRouteConditionReady = "Ready"
 )
 
+// The values spec.type and spec.scheme may take. They are the CRD's enums, and
+// having them as constants is what keeps the schema, the controller and the
+// tests from drifting apart over a typo in a string literal.
+const (
+	// RouteTypeHost takes everything for a hostname that no path route claimed.
+	RouteTypeHost = "host"
+	// RouteTypePath takes one path prefix of a hostname.
+	RouteTypePath = "path"
+
+	// SchemeHTTP and SchemeHTTPS are how the agent reaches the upstream. The
+	// public side is always HTTPS whichever of these is chosen.
+	SchemeHTTP  = "http"
+	SchemeHTTPS = "https"
+)
+
 // TunnelRouteFinalizer keeps the object until the route has been deleted in the
 // platform. A route that outlives its object still answers on a public
 // hostname, which is the failure worth preventing.
