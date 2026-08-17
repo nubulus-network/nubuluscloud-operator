@@ -1,0 +1,100 @@
+name: release
+
+# A release is cut by tagging. Everything published carries the tag's version:
+# the image, the chart, and the appVersion inside the chart. They are checked
+# against each other before anything is pushed, because a chart shipping the
+# schemas of one version and pointing at the image of another is a failure that
+# only shows up in somebody else's cluster.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          # The main-branch check below needs history, not just the tag.
+          fetch-depth: 0
+
+      # A published version must always be a commit that is on main.
+      #
+      # A tag on a branch produces a perfectly valid release of code that nobody
+      # can find afterwards: main does not contain it, so the next release is
+      # cut from a tree that silently drops the fix, and `git log main` is a lie
+      # about what was published. A registry keeps whatever it is given forever,
+      # so this has to fail before anything is built.
+      - name: The tagged commit has to be on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not on main. Merge it first, then tag the commit on main."
+            exit 1
+          fi
+          echo "$GITHUB_SHA is on main."
+
+      - name: The chart has to declare the version being tagged
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CHART_VERSION=$(grep '^version:' charts/nubuluscloud-operator/Chart.yaml | awk '{print $2}')
+          APP_VERSION=$(grep '^appVersion:' charts/nubuluscloud-operator/Chart.yaml | awk '{print $2}' | tr -d '"')
+          if [ "$CHART_VERSION" != "$TAG" ] || [ "$APP_VERSION" != "$TAG" ]; then
+            echo "::error::Chart.yaml says version=$CHART_VERSION appVersion=$APP_VERSION, tag says $TAG."
+            echo "::error::Update Chart.yaml on main and tag that commit."
+            exit 1
+          fi
+          echo "Chart and tag agree on $TAG."
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # A release that cannot pass its own tests should not reach a registry.
+      - name: Run the tests
+        run: make test
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Two architectures because clusters are not all amd64, and an operator
+      # that only runs on one is discovered by the person whose nodes are arm.
+      #
+      # No `latest` tag: nothing consumes it. The chart pins the image to its own
+      # appVersion, and a floating tag in a customer's cluster is a way to change
+      # what they run without them asking.
+      - name: Build and push the operator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: ghcr.io/nubulus-network/nubuluscloud-operator:${{ github.ref_name }}
+
+      - name: Package and push the chart
+        run: |
+          helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}"
+          helm package charts/nubuluscloud-operator --destination dist
+          helm push "dist/nubuluscloud-operator-${GITHUB_REF_NAME#v}.tgz" \
+            oci://ghcr.io/nubulus-network/charts
