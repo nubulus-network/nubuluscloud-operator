@@ -14,9 +14,9 @@ appVersion: "0.1.0"
 # should be refused at apply time become conditions nobody reads.
 kubeVersion: ">=1.25.0-0"
 
-home: https://github.com/Nubulus-Network/nubuluscloud-operator
+home: https://github.com/nubulus-network/nubuluscloud-operator
 sources:
-  - https://github.com/Nubulus-Network/nubuluscloud-operator
+  - https://github.com/nubulus-network/nubuluscloud-operator
 keywords:
   - tunnel
   - ingress

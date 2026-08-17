@@ -29,8 +29,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tunnelv1alpha1 "github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1"
-	"github.com/Nubulus-Network/nubuluscloud-operator/internal/nubulus"
+	tunnelv1alpha1 "github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1"
+	"github.com/nubulus-network/nubuluscloud-operator/internal/nubulus"
 )
 
 // fakeAPI is a stand-in for the tunnel API, reproducing the behaviours the

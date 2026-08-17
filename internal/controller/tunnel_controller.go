@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	tunnelv1alpha1 "github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1"
-	"github.com/Nubulus-Network/nubuluscloud-operator/internal/nubulus"
+	tunnelv1alpha1 "github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1"
+	"github.com/nubulus-network/nubuluscloud-operator/internal/nubulus"
 )
 
 const (

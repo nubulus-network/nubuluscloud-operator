@@ -24,8 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
-	tunnelv1alpha1 "github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1"
-	"github.com/Nubulus-Network/nubuluscloud-operator/internal/nubulus"
+	tunnelv1alpha1 "github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1"
+	"github.com/nubulus-network/nubuluscloud-operator/internal/nubulus"
 )
 
 func hostRoute() *tunnelv1alpha1.TunnelRoute {

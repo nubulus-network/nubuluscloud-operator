@@ -37,8 +37,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	tunnelv1alpha1 "github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1"
-	"github.com/Nubulus-Network/nubuluscloud-operator/internal/nubulus"
+	tunnelv1alpha1 "github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1"
+	"github.com/nubulus-network/nubuluscloud-operator/internal/nubulus"
 )
 
 // serviceNameIndex indexes routes by the Service they point at, so that a

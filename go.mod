@@ -1,4 +1,4 @@
-module github.com/Nubulus-Network/nubuluscloud-operator
+module github.com/nubulus-network/nubuluscloud-operator
 
 go 1.26.0
 

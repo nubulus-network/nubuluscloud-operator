@@ -25,8 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	tunnelv1alpha1 "github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1"
-	"github.com/Nubulus-Network/nubuluscloud-operator/internal/nubulus"
+	tunnelv1alpha1 "github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1"
+	"github.com/nubulus-network/nubuluscloud-operator/internal/nubulus"
 )
 
 // APIClientFactory hands out platform clients built from a Tunnel's credential.

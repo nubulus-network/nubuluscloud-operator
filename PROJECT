@@ -7,7 +7,7 @@ domain: nubulusnetwork.es
 layout:
 - go.kubebuilder.io/v4
 projectName: nubuluscloud-operator
-repo: github.com/Nubulus-Network/nubuluscloud-operator
+repo: github.com/nubulus-network/nubuluscloud-operator
 resources:
 - api:
     crdVersion: v1
@@ -16,7 +16,7 @@ resources:
   domain: nubulusnetwork.es
   group: tunnel
   kind: Tunnel
-  path: github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1
+  path: github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -25,6 +25,6 @@ resources:
   domain: nubulusnetwork.es
   group: tunnel
   kind: TunnelRoute
-  path: github.com/Nubulus-Network/nubuluscloud-operator/api/v1alpha1
+  path: github.com/nubulus-network/nubuluscloud-operator/api/v1alpha1
   version: v1alpha1
 version: "3"
